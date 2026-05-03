@@ -4,9 +4,10 @@ import {
   flexRender, ColumnDef, SortingState, ColumnFiltersState
 } from '@tanstack/react-table';
 import { format } from 'date-fns';
-import { Search, MoreHorizontal, Check, X, ShieldAlert } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Search, MoreHorizontal, Check, X, ShieldAlert, User, Gift, Calendar, Clock, CreditCard, ExternalLink, Info } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { useRedemptionStore, Redemption } from '@/stores/redemptionStore';
 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -15,42 +16,34 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-
-const generateMockRedemptions = (count: number) => {
-  const statuses = ["pending", "approved", "rejected"];
-  const rewards = ["MTN Airtime ₦500", "Wallet Cash ₦1000", "Netflix Gift Card $15", "Airtel Data 1.5GB"];
-  return Array.from({ length: count }).map((_, i) => ({
-    id: `red-${Math.floor(Math.random() * 100000)}`,
-    userId: `user-${Math.floor(Math.random() * 500) + 1}`,
-    userName: `Test User ${Math.floor(Math.random() * 500) + 1}`,
-    rewardName: rewards[Math.floor(Math.random() * rewards.length)],
-    berryCost: Math.floor(Math.random() * 5000) + 500,
-    status: statuses[Math.floor(Math.random() * statuses.length)],
-    date: new Date(Date.now() - Math.random() * 86400000 * 5),
-    autoProcess: Math.random() > 0.8 // indicating logic might have auto-approved but requires review
-  }));
-};
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Separator } from '@/components/ui/separator';
+import { Card, CardContent } from '@/components/ui/card';
 
 export default function RedemptionsPage() {
-  const [data, setData] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { redemptions: data, isLoading, fetchRedemptions, updateStatus } = useRedemptionStore();
   const [sorting, setSorting] = useState<SortingState>([{ id: 'date', desc: true }]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [selectedRedemption, setSelectedRedemption] = useState<Redemption | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
-    setIsLoading(true);
-    setTimeout(() => {
-      setData(generateMockRedemptions(60));
-      setIsLoading(false);
-    }, 800);
-  }, []);
+    fetchRedemptions();
+  }, [fetchRedemptions]);
 
-  const handleStatusChange = (id: string, newStatus: string) => {
-    setData(prev => prev.map(item => item.id === id ? { ...item, status: newStatus } : item));
+  const handleStatusChange = (id: string, newStatus: Redemption['status']) => {
+    updateStatus(id, newStatus);
     toast.success(`Redemption ${newStatus} successfully.`);
   };
 
-  const columns: ColumnDef<any>[] = [
+  const columns: ColumnDef<Redemption>[] = [
     {
       accessorKey: 'id',
       header: 'ID',
@@ -98,7 +91,7 @@ export default function RedemptionsPage() {
     {
       accessorKey: 'date',
       header: 'Requested On',
-      cell: ({ row }) => <div className="text-sm text-muted-foreground">{format(row.getValue('date'), 'MMM d, yyyy HH:mm')}</div>,
+      cell: ({ row }) => <div className="text-sm text-muted-foreground">{format(new Date(row.getValue('date')), 'MMM d, yyyy HH:mm')}</div>,
     },
     {
       id: 'actions',
@@ -123,6 +116,12 @@ export default function RedemptionsPage() {
                   <DropdownMenuSeparator />
                 </>
               )}
+              <DropdownMenuItem onClick={() => setSelectedRedemption(item)}>
+                View Full Details
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => toast.info("Processing redemption for " + item.id)}>
+                Manual Processing
+              </DropdownMenuItem>
               <DropdownMenuItem>
                 <Link to={`/users/${item.userId}?tab=redemptions`} className="flex w-full">View User History</Link>
               </DropdownMenuItem>
@@ -132,6 +131,7 @@ export default function RedemptionsPage() {
       },
     },
   ];
+
 
   const table = useReactTable({
     data,
@@ -237,6 +237,111 @@ export default function RedemptionsPage() {
           </div>
         </div>
       </div>
+
+      <Dialog open={!!selectedRedemption} onOpenChange={(open) => !open && setSelectedRedemption(null)}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              Redemption Details
+              <Badge variant="outline" className="ml-2 font-mono text-[10px]">{selectedRedemption?.id}</Badge>
+            </DialogTitle>
+            <DialogDescription>
+              Audit trail for this reward exchange.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedRedemption && (
+            <div className="space-y-6 pt-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">User Info</p>
+                  <div className="flex items-center gap-2 font-medium text-sm">
+                    <User className="w-4 h-4 text-muted-foreground" />
+                    {selectedRedemption.userName}
+                  </div>
+                  <Button variant="link" size="sm" className="h-4 p-0 text-primary text-xs" onClick={() => {
+                    setSelectedRedemption(null);
+                    navigate(`/users/${selectedRedemption.userId}`);
+                  }}>
+                    View Profile <ExternalLink className="w-3 h-3 ml-1" />
+                  </Button>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Status</p>
+                  <div className="flex items-center mt-1">
+                    {selectedRedemption.status === 'approved' && <Badge className="bg-green-100 text-green-700">Approved</Badge>}
+                    {selectedRedemption.status === 'rejected' && <Badge className="bg-red-100 text-red-700">Rejected</Badge>}
+                    {selectedRedemption.status === 'pending' && <Badge className="bg-amber-100 text-amber-700">Pending</Badge>}
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Redeemed Item</p>
+                <Card className="bg-muted/30 border-none shadow-none">
+                  <CardContent className="p-4 flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                      <Gift className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-sm">{selectedRedemption.rewardName}</p>
+                      <p className="text-xs text-muted-foreground">Unit Balance Deduction: {selectedRedemption.berryCost} Berry</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Separator />
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Cost</p>
+                  <p className="text-xl font-bold text-primary">{selectedRedemption.berryCost.toLocaleString()} Berry</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Timestamp</p>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Calendar className="w-4 h-4" />
+                    {format(new Date(selectedRedemption.date), 'MMM d, yyyy')}
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Clock className="w-4 h-4" />
+                    {format(new Date(selectedRedemption.date), 'HH:mm')}
+                  </div>
+                </div>
+              </div>
+
+              {selectedRedemption.autoProcess && (
+                <div className="bg-blue-50 border border-blue-200 rounded-md p-3 flex gap-3 text-blue-700">
+                  <Info className="w-5 h-5 shrink-0 mt-0.5" />
+                  <div className="text-xs">
+                    <p className="font-semibold">Digital Item (Auto-Processing)</p>
+                    <p className="mt-0.5">This item is set to auto-approve. It was flagged for manual review due to account status or suspicious activity.</p>
+                  </div>
+                </div>
+              )}
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setSelectedRedemption(null)}>Close</Button>
+                {selectedRedemption.status === 'pending' && (
+                  <div className="flex gap-2">
+                    <Button variant="destructive" size="sm" onClick={() => {
+                        handleStatusChange(selectedRedemption.id, 'rejected');
+                        setSelectedRedemption(null);
+                    }}>Reject</Button>
+                    <Button size="sm" onClick={() => {
+                        handleStatusChange(selectedRedemption.id, 'approved');
+                        setSelectedRedemption(null);
+                    }}>Approve</Button>
+                  </div>
+                )}
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

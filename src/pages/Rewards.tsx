@@ -1,31 +1,100 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash, Settings, Smartphone, Wifi, CreditCard, Gift } from 'lucide-react';
+import { Plus, Edit, Trash, Settings, Smartphone, Wifi, CreditCard, Gift, Loader2 } from 'lucide-react';
+import { useRewardStore, Reward } from '@/stores/rewardStore';
+import { toast } from 'sonner';
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-
-const generateMockRewards = () => [
-  { id: 'rw-1', name: 'MTN Airtime ₦500', cost: 500, type: 'airtime', provider: 'MTN', active: true, stock: -1, redeemedCount: 15420 },
-  { id: 'rw-2', name: 'Airtel Airtime ₦500', cost: 500, type: 'airtime', provider: 'Airtel', active: true, stock: -1, redeemedCount: 8200 },
-  { id: 'rw-3', name: 'MTN Data 1.5GB', cost: 1200, type: 'data', provider: 'MTN', active: true, stock: -1, redeemedCount: 9340 },
-  { id: 'rw-4', name: 'Wallet Cash ₦1000', cost: 1000, type: 'cash', provider: 'System', active: true, stock: -1, redeemedCount: 22100 },
-  { id: 'rw-5', name: 'Wallet Cash ₦5000', cost: 4800, type: 'cash', provider: 'System', active: true, stock: -1, redeemedCount: 4500 },
-  { id: 'rw-6', name: 'Shoprite Voucher ₦10000', cost: 9500, type: 'voucher', provider: 'Shoprite', active: false, stock: 0, redeemedCount: 150 },
-  { id: 'rw-7', name: 'Netflix Gift Card $15', cost: 15000, type: 'voucher', provider: 'Netflix', active: true, stock: 45, redeemedCount: 890 },
-];
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { 
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger 
+} from '@/components/ui/dialog';
+import { 
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
+} from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function RewardsPage() {
-  const [data, setData] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { rewards: data, isLoading, fetchRewards, addReward, updateReward, deleteReward } = useRewardStore();
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingReward, setEditingReward] = useState<Reward | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  // Form State
+  const [name, setName] = useState('');
+  const [cost, setCost] = useState('');
+  const [type, setType] = useState<'airtime' | 'data' | 'cash' | 'voucher'>('airtime');
+  const [provider, setProvider] = useState('');
+  const [active, setActive] = useState(true);
+  const [stock, setStock] = useState('-1');
 
   useEffect(() => {
-    setIsLoading(true);
-    setTimeout(() => {
-      setData(generateMockRewards());
-      setIsLoading(false);
-    }, 600);
-  }, []);
+    fetchRewards();
+  }, [fetchRewards]);
+
+  const resetForm = () => {
+    setName('');
+    setCost('');
+    setType('airtime');
+    setProvider('');
+    setActive(true);
+    setStock('-1');
+    setEditingReward(null);
+  };
+
+  const handleEdit = (reward: Reward) => {
+    setEditingReward(reward);
+    setName(reward.name);
+    setCost(reward.cost.toString());
+    setType(reward.type);
+    setProvider(reward.provider);
+    setActive(reward.active);
+    setStock(reward.stock.toString());
+    setIsDialogOpen(true);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload = {
+      name,
+      cost: parseInt(cost) || 0,
+      type,
+      provider,
+      active,
+      stock: parseInt(stock) || 0,
+    };
+
+    if (editingReward) {
+      updateReward(editingReward.id, payload);
+      toast.success("Reward updated successfully");
+    } else {
+      addReward(payload);
+      toast.success("Reward added to catalog");
+    }
+    setIsDialogOpen(false);
+    resetForm();
+  };
+
+  const handleDelete = () => {
+    if (deleteId) {
+      deleteReward(deleteId);
+      toast.success("Reward removed from catalog");
+      setDeleteId(null);
+    }
+  };
 
   const getIcon = (type: string) => {
     switch(type) {
@@ -38,15 +107,79 @@ export default function RewardsPage() {
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="space-y-6 animate-in fade-in duration-500 pb-20">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Reward Catalog</h2>
           <p className="text-muted-foreground">Manage the items users can redeem with their Berry balance.</p>
         </div>
-        <Button className="bg-primary hover:bg-primary/90 hidden sm:flex">
-          <Plus className="w-4 h-4 mr-2" /> Add Reward
-        </Button>
+        
+        <Dialog open={isDialogOpen} onOpenChange={(open) => {
+          setIsDialogOpen(open);
+          if (!open) resetForm();
+        }}>
+          <DialogTrigger asChild>
+            <Button className="bg-primary hover:bg-primary/90">
+              <Plus className="w-4 h-4 mr-2" /> Add Reward
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[425px]">
+            <form onSubmit={handleSubmit}>
+              <DialogHeader>
+                <DialogTitle>{editingReward ? 'Edit Reward' : 'Add New Reward'}</DialogTitle>
+                <DialogDescription>
+                  Configure the reward parameters. Users will see this in the app catalog.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="name">Display Name</Label>
+                  <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. MTN 1GB Data" required />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="type">Category</Label>
+                    <Select value={type} onValueChange={(v: any) => setType(v)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="airtime">Airtime</SelectItem>
+                        <SelectItem value="data">Data Bundle</SelectItem>
+                        <SelectItem value="cash">Wallet Cash</SelectItem>
+                        <SelectItem value="voucher">Gift Voucher</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="provider">Provider</Label>
+                    <Input id="provider" value={provider} onChange={(e) => setProvider(e.target.value)} placeholder="e.g. MTN" required />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="cost">Cost (Berry)</Label>
+                    <Input id="cost" type="number" value={cost} onChange={(e) => setCost(e.target.value)} required />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="stock">Stock (-1: unlim)</Label>
+                    <Input id="stock" type="number" value={stock} onChange={(e) => setStock(e.target.value)} required />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between p-3 border rounded-md">
+                  <div className="space-y-0.5">
+                    <Label>Active Status</Label>
+                    <div className="text-[10px] text-muted-foreground">Is this visible to users?</div>
+                  </div>
+                  <Switch checked={active} onCheckedChange={setActive} />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="submit" className="w-full sm:w-auto">{editingReward ? 'Update Reward' : 'Create Reward'}</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -67,10 +200,10 @@ export default function RewardsPage() {
           ))
         ) : (
           data.map((reward) => (
-            <Card key={reward.id} className={`flex flex-col ${!reward.active ? 'opacity-60 grayscale-[0.5]' : ''}`}>
+            <Card key={reward.id} className={`flex flex-col group transition-all hover:shadow-md ${!reward.active ? 'opacity-60 grayscale-[0.5]' : ''}`}>
               <CardHeader className="pb-2 flex flex-row items-start justify-between space-y-0">
                 <div className="space-y-1">
-                  <div className="p-2 bg-muted rounded-md w-fit mb-2">
+                  <div className="p-2 bg-muted rounded-md w-fit mb-2 group-hover:bg-primary/10 transition-colors">
                     {getIcon(reward.type)}
                   </div>
                   <CardTitle className="text-base leading-tight">{reward.name}</CardTitle>
@@ -96,18 +229,36 @@ export default function RewardsPage() {
                   <span className="font-medium">{reward.redeemedCount.toLocaleString()} times</span>
                 </div>
               </CardContent>
-              <CardFooter className="flex gap-2 pt-0">
-                <Button variant="outline" className="flex-1 h-8 px-2 text-xs">
+              <CardFooter className="flex gap-2 pt-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                <Button variant="outline" className="flex-1 h-8 px-2 text-xs" onClick={() => handleEdit(reward)}>
                   <Edit className="w-3 h-3 mr-1" /> Edit
                 </Button>
-                <Button variant="outline" className="flex-1 h-8 px-2 text-xs">
-                  <Settings className="w-3 h-3 mr-1" /> Config
+                <Button variant="outline" className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10" onClick={() => setDeleteId(reward.id)}>
+                  <Trash className="w-3 h-3" />
                 </Button>
               </CardFooter>
             </Card>
           ))
         )}
       </div>
+
+      <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove from catalog?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This reward will no longer be available for users to redeem. Existing redemption records will be preserved.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel variant="outline" size="default">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90" variant="destructive" size="default">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
+

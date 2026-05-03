@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { Outlet, Link, useLocation } from 'react-router-dom';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
+import { useAdminAlertStore } from '@/stores/adminAlertStore';
 import { auth } from '@/firebase';
 import { cn } from '@/lib/utils';
 import {
   LayoutDashboard, Users, Flag, ClipboardCheck, Gift, Trophy,
-  Landmark, BookOpen, Settings, ListPlus, Bell, ChevronLeft, ChevronRight, Search, FileText, Share2, LogOut, ShieldAlert
+  Landmark, BookOpen, Settings, ListPlus, Bell, ChevronLeft, ChevronRight, Search, FileText, Share2, LogOut, ShieldAlert,
+  Info, AlertTriangle, AlertCircle, CheckCircle2
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
@@ -25,7 +27,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Button } from '@/components/ui/button';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { formatDistanceToNow } from 'date-fns';
 
 const navGroups = [
   {
@@ -62,13 +71,13 @@ const navGroups = [
     items: [
       { name: 'Withdrawals', path: '/finance/withdrawals', icon: Landmark },
       { name: 'Berry Ledger', path: '/finance/berry-ledger', icon: BookOpen },
-      { name: 'Adjustments', path: '/finance/adjustments', icon: Settings }, // Will change later
+      { name: 'Adjustments', path: '/finance/adjustments', icon: Settings },
     ]
   },
   {
     label: 'CONTENT',
     items: [
-      { name: 'Profile Builder', path: '/profile-builder', icon: Settings }, // Change icon later
+      { name: 'Profile Builder', path: '/profile-builder', icon: FileText },
       { name: 'Notifications', path: '/notifications', icon: Bell },
     ]
   },
@@ -95,7 +104,9 @@ export default function AdminLayout() {
   });
   const [showInactivityWarning, setShowInactivityWarning] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
   const { user, setUser } = useAuthStore();
+  const { alerts, unreadCount, fetchAlerts, markAsRead, markAllAsRead } = useAdminAlertStore();
 
   const handleLogout = async () => {
     if (!import.meta.env.VITE_FIREBASE_API_KEY) {
@@ -110,6 +121,10 @@ export default function AdminLayout() {
   useEffect(() => {
     localStorage.setItem('sidebar_collapsed', String(collapsed));
   }, [collapsed]);
+
+  useEffect(() => {
+    fetchAlerts();
+  }, [fetchAlerts]);
 
   useEffect(() => {
     let inactivityTimer: NodeJS.Timeout;
@@ -155,6 +170,15 @@ export default function AdminLayout() {
     return 'Admin Portal';
   };
 
+  const getAlertIcon = (type: string) => {
+    switch (type) {
+      case 'warning': return <AlertTriangle className="h-4 w-4 text-amber-500" />;
+      case 'error': return <AlertCircle className="h-4 w-4 text-red-500" />;
+      case 'success': return <CheckCircle2 className="h-4 w-4 text-green-500" />;
+      default: return <Info className="h-4 w-4 text-blue-500" />;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background flex text-foreground">
       {/* Sidebar */}
@@ -184,7 +208,7 @@ export default function AdminLayout() {
                   return (
                     <React.Fragment key={item.name}>
                     <Tooltip>
-                      <TooltipTrigger render={
+                      <TooltipTrigger asChild>
                         <Link
                           to={item.path}
                           className={cn(
@@ -197,7 +221,7 @@ export default function AdminLayout() {
                           <item.icon className={cn("w-5 h-5 shrink-0", !collapsed && "mr-3")} />
                           {!collapsed && <span className="truncate">{item.name}</span>}
                         </Link>
-                      } />
+                      </TooltipTrigger>
                       {collapsed && <TooltipContent side="right">{item.name}</TooltipContent>}
                     </Tooltip>
                     </React.Fragment>
@@ -222,7 +246,7 @@ export default function AdminLayout() {
           </div>
           <div className="mt-4 flex items-center justify-between">
             {!collapsed && (
-              <Button variant="ghost" size="sm" onClick={handleLogout} className="text-white/70 hover:text-white hover:bg-white/10">
+              <Button variant="ghost" size="sm" onClick={handleLogout} className="text-white/70 hover:text-white hover:bg-white/10 px-2 h-8">
                 <LogOut className="w-4 h-4 mr-2" />
                 Logout
               </Button>
@@ -257,20 +281,93 @@ export default function AdminLayout() {
               />
             </div>
             
-            <button className="relative p-2 text-muted-foreground hover:bg-muted rounded-full">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full"></span>
-            </button>
+            <Popover>
+              <PopoverTrigger asChild>
+                <button className="relative p-2 text-muted-foreground hover:bg-muted rounded-full focus:outline-none transition-colors">
+                  <Bell className="w-5 h-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute top-1 right-1 w-4 h-4 bg-primary text-[10px] font-bold text-white rounded-full flex items-center justify-center border-2 border-white">
+                      {unreadCount}
+                    </span>
+                  )}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80 p-0" align="end">
+                <div className="flex items-center justify-between p-4 border-b">
+                  <h3 className="font-semibold">Notifications</h3>
+                  {unreadCount > 0 && (
+                    <Button variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={markAllAsRead}>
+                      Mark all as read
+                    </Button>
+                  )}
+                </div>
+                <ScrollArea className="h-[350px]">
+                  {alerts.length === 0 ? (
+                    <div className="p-8 text-center text-sm text-muted-foreground">
+                      No new notifications
+                    </div>
+                  ) : (
+                    <div className="divide-y">
+                      {alerts.map((alert) => (
+                        <div 
+                          key={alert.id} 
+                          className={cn(
+                            "p-4 hover:bg-muted/50 transition-colors cursor-pointer relative",
+                            !alert.isRead && "bg-primary/[0.03]"
+                          )}
+                          onClick={() => {
+                            markAsRead(alert.id);
+                            if (alert.link) navigate(alert.link);
+                          }}
+                        >
+                          {!alert.isRead && (
+                             <div className="absolute left-1 top-1/2 -translate-y-1/2 w-1 h-8 bg-primary rounded-full" />
+                          )}
+                          <div className="flex gap-3">
+                            <div className="mt-1 shrink-0">{getAlertIcon(alert.type)}</div>
+                            <div className="flex-1 space-y-1">
+                              <p className={cn("text-sm font-medium leading-none", !alert.isRead && "text-primary")}>
+                                {alert.title}
+                              </p>
+                              <p className="text-xs text-muted-foreground line-clamp-2">
+                                {alert.message}
+                              </p>
+                              <p className="text-[10px] text-muted-foreground pt-1">
+                                {formatDistanceToNow(new Date(alert.receivedAt), { addSuffix: true })}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+                <div className="p-2 border-t text-center">
+                  <Button variant="ghost" size="sm" className="w-full text-xs" asChild>
+                    <Link to="/notifications">Open Notification Center</Link>
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
 
             <DropdownMenu>
-              <DropdownMenuTrigger className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center focus:outline-none">
+              <DropdownMenuTrigger className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center focus:outline-none hover:bg-primary/20 transition-colors">
                 {user?.email?.charAt(0).toUpperCase()}
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>My Account</DropdownMenuLabel>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>
+                   <div className="flex flex-col">
+                     <span>{user?.displayName || 'Admin'}</span>
+                     <span className="text-xs font-normal text-muted-foreground">{user?.email}</span>
+                   </div>
+                </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>Profile</DropdownMenuItem>
-                <DropdownMenuItem onClick={handleLogout}>Logout</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/settings/config')}>
+                  <Settings className="w-4 h-4 mr-2" /> Settings
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleLogout} className="text-red-600 focus:text-red-600 focus:bg-red-50">
+                  <LogOut className="w-4 h-4 mr-2" /> Logout
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -290,7 +387,7 @@ export default function AdminLayout() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogAction onClick={() => setShowInactivityWarning(false)}>Stay Logged In</AlertDialogAction>
+             <Button onClick={() => setShowInactivityWarning(false)}>Stay Logged In</Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

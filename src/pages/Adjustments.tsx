@@ -4,51 +4,76 @@ import {
   flexRender, ColumnDef, SortingState, ColumnFiltersState
 } from '@tanstack/react-table';
 import { format } from 'date-fns';
-import { Search, Plus, MoreHorizontal, ArrowUpRight, ArrowDownLeft, ShieldAlert } from 'lucide-react';
+import { Search, Plus, MoreHorizontal, ArrowUpRight, ArrowDownLeft, ShieldAlert, User as UserIcon, Wallet, Info } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useAdjustmentStore, Adjustment } from '@/stores/adjustmentStore';
+import { toast } from 'sonner';
 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
-
-const generateMockAdjustments = (count: number) => {
-  const types = ["credit", "debit"];
-  const wallets = ["berry", "cash"];
-  return Array.from({ length: count }).map((_, i) => {
-    const type = types[Math.floor(Math.random() * types.length)];
-    const wallet = wallets[Math.floor(Math.random() * wallets.length)];
-    return {
-      id: `adj-${Math.floor(Math.random() * 100000)}`,
-      userId: `user-${Math.floor(Math.random() * 500) + 1}`,
-      userName: `Test User ${Math.floor(Math.random() * 500) + 1}`,
-      type,
-      walletType: wallet,
-      amount: Math.floor(Math.random() * 5000) + 50,
-      reason: "Correction for system error on survey compensation",
-      adminId: "admin-1",
-      adminName: "Super Admin",
-      date: new Date(Date.now() - Math.random() * 86400000 * 15),
-    };
-  });
-};
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from '@/components/ui/textarea';
 
 export default function AdjustmentsPage() {
-  const [data, setData] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { adjustments: data, isLoading, fetchAdjustments, addAdjustment } = useAdjustmentStore();
   const [sorting, setSorting] = useState<SortingState>([{ id: 'date', desc: true }]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
 
-  useEffect(() => {
-    setIsLoading(true);
-    setTimeout(() => {
-      setData(generateMockAdjustments(25));
-      setIsLoading(false);
-    }, 600);
-  }, []);
+  // Dialog State
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  
+  // Form State
+  const [targetUserId, setTargetUserId] = useState('');
+  const [targetUserName, setTargetUserName] = useState('');
+  const [type, setType] = useState<'credit' | 'debit'>('credit');
+  const [walletType, setWalletType] = useState<'berry' | 'cash'>('berry');
+  const [amount, setAmount] = useState('');
+  const [reason, setReason] = useState('');
 
-  const columns: ColumnDef<any>[] = [
+  useEffect(() => {
+    fetchAdjustments();
+  }, [fetchAdjustments]);
+
+  const resetForm = () => {
+    setTargetUserId('');
+    setTargetUserName('');
+    setType('credit');
+    setWalletType('berry');
+    setAmount('');
+    setReason('');
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!targetUserId || !targetUserName) {
+      toast.error("Please specify a target user");
+      return;
+    }
+    
+    addAdjustment({
+      userId: targetUserId,
+      userName: targetUserName,
+      type,
+      walletType,
+      amount: parseFloat(amount),
+      reason,
+    });
+    
+    toast.success("Manual adjustment applied successfully");
+    setIsDialogOpen(false);
+    resetForm();
+  };
+
+  const columns: ColumnDef<Adjustment>[] = [
     {
       accessorKey: 'id',
       header: 'ID',
@@ -107,7 +132,7 @@ export default function AdjustmentsPage() {
     {
       accessorKey: 'date',
       header: 'Date',
-      cell: ({ row }) => <div className="text-sm text-muted-foreground">{format(row.getValue('date'), 'MMM d, yyyy HH:mm')}</div>,
+      cell: ({ row }) => <div className="text-sm text-muted-foreground">{format(new Date(row.getValue('date')), 'MMM d, yyyy HH:mm')}</div>,
     },
   ];
 
@@ -124,13 +149,13 @@ export default function AdjustmentsPage() {
   });
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="space-y-6 animate-in fade-in duration-500 pb-20">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Manual Adjustments</h2>
           <p className="text-muted-foreground">Log of manual balance corrections (credit/debit) made by admins.</p>
         </div>
-        <Button className="bg-primary hover:bg-primary/90 hidden sm:flex">
+        <Button onClick={() => setIsDialogOpen(true)} className="bg-primary hover:bg-primary/90 hidden sm:flex">
           <Plus className="w-4 h-4 mr-2" /> New Adjustment
         </Button>
       </div>
@@ -189,6 +214,119 @@ export default function AdjustmentsPage() {
           </Table>
         </div>
       </div>
+
+      <Dialog open={isDialogOpen} onOpenChange={(open) => {
+        setIsDialogOpen(open);
+        if (!open) resetForm();
+      }}>
+        <DialogContent className="sm:max-w-[500px]">
+          <form onSubmit={handleSubmit}>
+            <DialogHeader>
+              <DialogTitle>New Manual Adjustment</DialogTitle>
+              <DialogDescription>
+                Correct a user's balance. Use with caution as this affects financial records.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="userId">User ID / Search</Label>
+                  <div className="relative">
+                    <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                    <Input 
+                      id="userId" 
+                      value={targetUserId} 
+                      onChange={(e) => setTargetUserId(e.target.value)} 
+                      placeholder="e.g. user-123" 
+                      className="pl-9"
+                      required 
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="userName">User Display Name</Label>
+                  <Input 
+                    id="userName" 
+                    value={targetUserName} 
+                    onChange={(e) => setTargetUserName(e.target.value)} 
+                    placeholder="e.g. John Doe" 
+                    required 
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="adjustmentType">Action Type</Label>
+                  <Select value={type} onValueChange={(v: any) => setType(v)}>
+                    <SelectTrigger id="adjustmentType">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="credit">Credit (Add Funds)</SelectItem>
+                      <SelectItem value="debit">Debit (Remove Funds)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="walletType">Target Wallet</Label>
+                  <Select value={walletType} onValueChange={(v: any) => setWalletType(v)}>
+                    <SelectTrigger id="walletType">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="berry">Berry Wallet</SelectItem>
+                      <SelectItem value="cash">Cash Wallet (₦)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="adjAmount">Amount</Label>
+                <div className="relative">
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground pointer-events-none">
+                    {walletType === 'cash' ? '₦' : 'B'}
+                  </div>
+                  <Input 
+                    id="adjAmount" 
+                    type="number" 
+                    value={amount} 
+                    onChange={(e) => setAmount(e.target.value)} 
+                    className="pl-8"
+                    placeholder="0.00"
+                    required 
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="adjReason">Justification / Reason</Label>
+                <Textarea 
+                  id="adjReason" 
+                  value={reason} 
+                  onChange={(e) => setReason(e.target.value)} 
+                  placeholder="Describe why this manual adjustment is being made..."
+                  className="min-h-[100px]"
+                  required 
+                />
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg flex gap-3">
+                <Info className="w-5 h-5 text-amber-600 shrink-0" />
+                <p className="text-xs text-amber-800">
+                  Manual adjustments are logged with your administrator ID. Ensure all corrections are backed by valid support tickets or internal reports.
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
+              <Button type="submit">Post Adjustment</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+

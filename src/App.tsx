@@ -37,7 +37,7 @@ import AdjustmentsPage from '@/pages/Adjustments';
 import AdminUsersPage from '@/pages/AdminUsers';
 import AuditLogPage from '@/pages/AuditLog';
 import ProfileBuilderPage from '@/pages/ProfileBuilder';
-import GenericConstructionPage from '@/pages/GenericConstruction';
+import SurveyDetailPage from '@/pages/SurveyDetail';
 
 export default function App() {
   const { setUser, setLoading } = useAuthStore();
@@ -93,7 +93,8 @@ export default function App() {
               <Route path="/surveys" element={<SurveysPage />} />
               <Route path="/surveys/submissions" element={<SurveySubmissionsPage />} />
               <Route path="/surveys/create" element={<CreateSurveyPage />} />
-              <Route path="/surveys/:surveyId" element={<GenericConstructionPage title="Survey Detail" />} />
+              <Route path="/surveys/edit/:surveyId" element={<CreateSurveyPage />} />
+              <Route path="/surveys/:surveyId" element={<SurveyDetailPage />} />
               
               <Route path="/rewards" element={<RewardsPage />} />
               <Route path="/rewards/redemptions" element={<RedemptionsPage />} />

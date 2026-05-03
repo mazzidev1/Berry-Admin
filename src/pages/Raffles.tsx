@@ -4,44 +4,108 @@ import {
   flexRender, ColumnDef, SortingState, ColumnFiltersState
 } from '@tanstack/react-table';
 import { format } from 'date-fns';
-import { Search, Plus, MoreHorizontal, Ticket, Trophy } from 'lucide-react';
+import { Search, Plus, MoreHorizontal, Ticket, Trophy, Edit, Trash, Calendar as CalendarIcon } from 'lucide-react';
+import { useRaffleStore, Raffle } from '@/stores/raffleStore';
+import { toast } from 'sonner';
 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Label } from '@/components/ui/label';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-
-const generateMockRaffles = (count: number) => {
-  const statuses = ["active", "drawn", "draft"];
-  return Array.from({ length: count }).map((_, i) => ({
-    id: `raf-${i + 1}`,
-    title: `Weekly Mega Draw #${i + 1}`,
-    prize: i % 3 === 0 ? "iPhone 15 Pro" : i % 2 === 0 ? "₦50,000 Cash" : "10,000 Berry",
-    ticketCost: Math.floor(Math.random() * 500) + 50,
-    ticketsSold: Math.floor(Math.random() * 5000),
-    maxTickets: Math.random() > 0.5 ? Math.floor(Math.random() * 5000) + 5000 : null,
-    status: statuses[Math.floor(Math.random() * statuses.length)],
-    drawDate: new Date(Date.now() + (Math.random() * 86400000 * 10) - (Math.random() * 86400000 * 5)),
-  }));
-};
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function RafflesPage() {
-  const [data, setData] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { raffles: data, isLoading, fetchRaffles, addRaffle, updateRaffle, deleteRaffle } = useRaffleStore();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  
+  // CRUD State
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingRaffle, setEditingRaffle] = useState<Raffle | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  // Form State
+  const [title, setTitle] = useState('');
+  const [prize, setPrize] = useState('');
+  const [ticketCost, setTicketCost] = useState('100');
+  const [maxTickets, setMaxTickets] = useState('');
+  const [status, setStatus] = useState<'active' | 'drawn' | 'draft'>('draft');
+  const [drawDate, setDrawDate] = useState(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
 
   useEffect(() => {
-    setIsLoading(true);
-    setTimeout(() => {
-      setData(generateMockRaffles(15));
-      setIsLoading(false);
-    }, 600);
-  }, []);
+    fetchRaffles();
+  }, [fetchRaffles]);
 
-  const columns: ColumnDef<any>[] = [
+  const resetForm = () => {
+    setTitle('');
+    setPrize('');
+    setTicketCost('100');
+    setMaxTickets('');
+    setStatus('draft');
+    setDrawDate(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
+    setEditingRaffle(null);
+  };
+
+  const handleEdit = (raffle: Raffle) => {
+    setEditingRaffle(raffle);
+    setTitle(raffle.title);
+    setPrize(raffle.prize);
+    setTicketCost(raffle.ticketCost.toString());
+    setMaxTickets(raffle.maxTickets ? raffle.maxTickets.toString() : '');
+    setStatus(raffle.status);
+    setDrawDate(format(new Date(raffle.drawDate), "yyyy-MM-dd'T'HH:mm"));
+    setIsDialogOpen(true);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload = {
+      title,
+      prize,
+      ticketCost: parseInt(ticketCost),
+      maxTickets: maxTickets ? parseInt(maxTickets) : null,
+      status,
+      drawDate: new Date(drawDate).toISOString(),
+    };
+
+    if (editingRaffle) {
+      updateRaffle(editingRaffle.id, payload);
+      toast.success("Raffle updated successfully");
+    } else {
+      addRaffle(payload);
+      toast.success("Raffle created successfully");
+    }
+    setIsDialogOpen(false);
+    resetForm();
+  };
+
+  const handleDelete = () => {
+    if (deleteId) {
+      deleteRaffle(deleteId);
+      toast.success("Raffle deleted successfully");
+      setDeleteId(null);
+    }
+  };
+
+  const columns: ColumnDef<Raffle>[] = [
     {
       accessorKey: 'title',
       header: 'Raffle Name',
@@ -89,7 +153,7 @@ export default function RafflesPage() {
     {
       accessorKey: 'drawDate',
       header: 'Draw Date',
-      cell: ({ row }) => <div className="text-sm text-muted-foreground">{format(row.getValue('drawDate'), 'MMM d, yyyy')}</div>,
+      cell: ({ row }) => <div className="text-sm text-muted-foreground">{format(new Date(row.getValue('drawDate')), 'MMM d, yyyy')}</div>,
     },
     {
       id: 'actions',
@@ -100,9 +164,17 @@ export default function RafflesPage() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuLabel>Actions</DropdownMenuLabel>
-            <DropdownMenuItem>Edit Raffle</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleEdit(row.original)}>
+              <Edit className="w-4 h-4 mr-2" /> Edit Raffle
+            </DropdownMenuItem>
             <DropdownMenuItem>View Participants</DropdownMenuItem>
-            <DropdownMenuItem className="text-destructive focus:bg-destructive/10">Delete</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem 
+              className="text-destructive focus:bg-destructive/10"
+              onClick={() => setDeleteId(row.original.id)}
+            >
+              <Trash className="w-4 h-4 mr-2" /> Delete
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       ),
@@ -122,13 +194,13 @@ export default function RafflesPage() {
   });
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="space-y-6 animate-in fade-in duration-500 pb-20">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Raffle Draws</h2>
           <p className="text-muted-foreground">Manage periodic lucky draws for users to win big prizes.</p>
         </div>
-        <Button className="bg-primary hover:bg-primary/90 hidden sm:flex">
+        <Button onClick={() => setIsDialogOpen(true)} className="bg-primary hover:bg-primary/90 hidden sm:flex">
           <Plus className="w-4 h-4 mr-2" /> Create Raffle
         </Button>
       </div>
@@ -187,6 +259,93 @@ export default function RafflesPage() {
           </Table>
         </div>
       </div>
+
+      <Dialog open={isDialogOpen} onOpenChange={(open) => {
+        setIsDialogOpen(open);
+        if (!open) resetForm();
+      }}>
+        <DialogContent className="sm:max-w-[500px]">
+          <form onSubmit={handleSubmit}>
+            <DialogHeader>
+              <DialogTitle>{editingRaffle ? 'Update Raffle Draw' : 'Create New Raffle Draw'}</DialogTitle>
+              <DialogDescription>
+                Set up a new periodic lucky draw for users.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="title">Raffle Name</Label>
+                <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Weekly Mega Draw #12" required />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="prize">Prize Description</Label>
+                <Input id="prize" value={prize} onChange={(e) => setPrize(e.target.value)} placeholder="e.g. iPhone 15 Pro or 50,000 Cash" required />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="ticketCost">Ticket Cost (Berry)</Label>
+                  <Input id="ticketCost" type="number" value={ticketCost} onChange={(e) => setTicketCost(e.target.value)} required />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="maxTickets">Max Tickets (Optional)</Label>
+                  <Input id="maxTickets" type="number" value={maxTickets} onChange={(e) => setMaxTickets(e.target.value)} placeholder="Unlimited" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="status">Status</Label>
+                  <Select value={status} onValueChange={(v: any) => setStatus(v)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="draft">Draft</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="drawn">Drawn</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="drawDate">Draw Date & Time</Label>
+                  <div className="relative">
+                    <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                    <Input 
+                      id="drawDate" 
+                      type="datetime-local" 
+                      className="pl-9"
+                      value={drawDate}
+                      onChange={(e) => setDrawDate(e.target.value)}
+                      required 
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
+              <Button type="submit">{editingRaffle ? 'Update Raffle' : 'Create Raffle'}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the raffle and refund any purchased tickets (Simulation Note: Actual refunds not implemented in this mock).
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel variant="outline" size="default">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90" variant="destructive" size="default">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
+

@@ -5,13 +5,18 @@ import {
 } from '@tanstack/react-table';
 import { format } from 'date-fns';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Search, Eye, Download } from 'lucide-react';
+import { ArrowLeft, Search, Eye, Download, User as UserIcon, Clock, CheckCircle2 } from 'lucide-react';
 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 
 const generateMockSubmissions = (count: number) => {
   return Array.from({ length: count }).map((_, i) => ({
@@ -26,6 +31,14 @@ const generateMockSubmissions = (count: number) => {
   }));
 };
 
+const mockSurveyAnswers = [
+  { question: "How often do you use our mobile app?", answer: "Daily", type: "radio" },
+  { question: "What features would you like to see next?", answer: "Dark mode improved and more rewards options.", type: "text" },
+  { question: "Rate your overall satisfaction (1-10)", answer: "9", type: "scale" },
+  { question: "Which of these reward providers have you used?", answer: ["Shoprite", "KFC", "Jumia"], type: "checkbox" },
+  { question: "How easy is it to earn Berry points?", answer: "Very Easy", type: "radio" },
+];
+
 export default function SurveySubmissionsPage() {
   const [searchParams] = useSearchParams();
   const surveyId = searchParams.get('surveyId') || 'unknown';
@@ -34,6 +47,8 @@ export default function SurveySubmissionsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  
+  const [selectedSubmission, setSelectedSubmission] = useState<any | null>(null);
 
   useEffect(() => {
     setIsLoading(true);
@@ -81,7 +96,7 @@ export default function SurveySubmissionsPage() {
       header: '',
       cell: ({ row }) => {
         return (
-          <Button variant="outline" size="sm" className="h-8">
+          <Button variant="outline" size="sm" className="h-8" onClick={() => setSelectedSubmission(row.original)}>
             <Eye className="w-4 h-4 mr-2" /> View Answers
           </Button>
         );
@@ -102,7 +117,7 @@ export default function SurveySubmissionsPage() {
   });
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="space-y-6 animate-in fade-in duration-500 pb-20">
       <div className="flex items-center space-x-4">
         <Button variant="outline" size="icon" asChild>
           <Link to="/surveys"><ArrowLeft className="w-4 h-4" /></Link>
@@ -203,6 +218,73 @@ export default function SurveySubmissionsPage() {
           </div>
         </div>
       </div>
+
+      <Dialog open={!!selectedSubmission} onOpenChange={(open) => !open && setSelectedSubmission(null)}>
+        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Submission Details</DialogTitle>
+            <DialogDescription>
+              Review answers provided by {selectedSubmission?.userName}
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedSubmission && (
+            <div className="space-y-6 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-muted/30 p-4 rounded-lg border">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                    <UserIcon className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">{selectedSubmission.userName}</p>
+                    <p className="text-xs text-muted-foreground">{selectedSubmission.userId}</p>
+                  </div>
+                </div>
+                <div className="flex flex-col justify-center border-l md:pl-4">
+                  <div className="flex items-center text-xs text-muted-foreground mb-1">
+                    <Clock className="w-3 h-3 mr-1" />
+                    Completed: {format(new Date(selectedSubmission.completedAt), 'MMM d, yyyy HH:mm')}
+                  </div>
+                  <div className="flex items-center text-xs text-muted-foreground">
+                    <Clock className="w-3 h-3 mr-1" />
+                    Time Taken: {selectedSubmission.timeTaken}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h4 className="text-sm font-semibold flex items-center">
+                  <CheckCircle2 className="w-4 h-4 mr-2 text-primary" />
+                  Responses
+                </h4>
+                <Separator />
+                <div className="space-y-6">
+                  {mockSurveyAnswers.map((ans, idx) => (
+                    <div key={idx} className="space-y-2">
+                      <p className="text-sm font-medium text-foreground">{idx + 1}. {ans.question}</p>
+                      <div className="bg-background border rounded-md p-3 text-sm shadow-sm">
+                        {Array.isArray(ans.answer) ? (
+                          <div className="flex flex-wrap gap-2">
+                            {ans.answer.map((tag, tIdx) => (
+                              <Badge key={tIdx} variant="secondary">{tag}</Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground whitespace-pre-wrap">{ans.answer}</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+          <div className="flex justify-end mt-4">
+            <Button variant="outline" onClick={() => setSelectedSubmission(null)}>Close Review</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+

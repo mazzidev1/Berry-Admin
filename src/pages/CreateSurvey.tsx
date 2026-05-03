@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Loader2, Plus, GripVertical, Trash, Save } from 'lucide-react';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { useSurveyStore, Survey } from '@/stores/surveyStore';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -36,9 +37,12 @@ type SurveyFormValues = z.infer<typeof surveySchema>;
 
 export default function CreateSurveyPage() {
   const navigate = useNavigate();
+  const { surveyId } = useParams();
+  const { addSurvey, updateSurvey, surveys } = useSurveyStore();
   const [isLoading, setIsLoading] = useState(false);
+  const isEdit = !!surveyId;
 
-  const { register, control, handleSubmit, watch, formState: { errors } } = useForm<SurveyFormValues>({
+  const { register, control, handleSubmit, watch, reset, formState: { errors } } = useForm<SurveyFormValues>({
     // @ts-ignore zodResolver typing mismatch
     resolver: zodResolver(surveySchema),
     defaultValues: {
@@ -49,7 +53,7 @@ export default function CreateSurveyPage() {
       targetLimit: null,
       isActive: true,
       questions: [
-        { type: "text", prompt: "What is your primary feedback?", required: true, options: [] }
+        { type: "text", prompt: "", required: true, options: [] }
       ]
     }
   });
@@ -59,16 +63,49 @@ export default function CreateSurveyPage() {
     name: "questions"
   });
 
+  useEffect(() => {
+    if (isEdit) {
+      const existing = surveys.find(s => s.id === surveyId);
+      if (existing) {
+        reset({
+          title: existing.title,
+          description: existing.description,
+          category: existing.category,
+          reward: existing.reward,
+          targetLimit: existing.targetLimit,
+          isActive: existing.status === 'active',
+          questions: existing.questions
+        });
+      } else {
+        toast.error("Survey not found");
+        navigate("/surveys");
+      }
+    }
+  }, [isEdit, surveyId, surveys, reset, navigate]);
+
   const onSubmit = async (data: SurveyFormValues) => {
     setIsLoading(true);
     try {
-      // Mock API delay
-      await new Promise(r => setTimeout(r, 1000));
-      console.log("Survey created:", data);
-      toast.success("Survey created successfully");
+      const payload = {
+        title: data.title,
+        description: data.description,
+        category: data.category,
+        reward: data.reward,
+        targetLimit: data.targetLimit || null,
+        status: (data.isActive ? 'active' : 'draft') as 'active' | 'draft',
+        questions: data.questions
+      };
+
+      if (isEdit) {
+        updateSurvey(surveyId!, payload);
+        toast.success("Survey updated successfully");
+      } else {
+        addSurvey(payload);
+        toast.success("Survey created successfully");
+      }
       navigate("/surveys");
     } catch (e: any) {
-      toast.error("Failed to create survey");
+      toast.error(isEdit ? "Failed to update survey" : "Failed to create survey");
     } finally {
       setIsLoading(false);
     }
@@ -78,8 +115,8 @@ export default function CreateSurveyPage() {
     <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-500 pb-20">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Create Survey</h2>
-          <p className="text-muted-foreground">Build a new survey to gather user data.</p>
+          <h2 className="text-2xl font-bold tracking-tight">{isEdit ? 'Edit Survey' : 'Create Survey'}</h2>
+          <p className="text-muted-foreground">{isEdit ? 'Modify the survey parameters and questions.' : 'Build a new survey to gather user data.'}</p>
         </div>
       </div>
 
@@ -117,6 +154,7 @@ export default function CreateSurveyPage() {
                         <SelectItem value="Tech">Tech</SelectItem>
                         <SelectItem value="Health">Health</SelectItem>
                         <SelectItem value="Finance">Finance</SelectItem>
+                        <SelectItem value="Food">Food</SelectItem>
                       </SelectContent>
                     </Select>
                   )}
@@ -208,8 +246,16 @@ export default function CreateSurveyPage() {
                     {(watch(`questions.${index}.type`) === "radio" || watch(`questions.${index}.type`) === "checkbox") && (
                       <div className="pl-4 border-l-2 border-primary/20 space-y-2">
                         <Label className="text-muted-foreground text-xs">Options (comma separated)</Label>
-                        <Input placeholder="e.g. Yes, No, Maybe" {...register(`questions.${index}.options` as any)} />
-                        <p className="text-[11px] text-muted-foreground">In a real DB, strings would be split or modeled dynamically.</p>
+                        <Input 
+                          placeholder="e.g. Yes, No, Maybe" 
+                          onBlur={(e) => {
+                            const val = e.target.value;
+                            const options = val.split(',').map(o => o.trim()).filter(Boolean);
+                            // Set options in form state
+                            control._fields[`questions.${index}.options` as any] = options;
+                          }}
+                          defaultValue={watch(`questions.${index}.options`)?.join(', ')}
+                        />
                       </div>
                     )}
                   </div>
@@ -245,10 +291,11 @@ export default function CreateSurveyPage() {
           <Button type="button" variant="outline" onClick={() => navigate('/surveys')} disabled={isLoading}>Cancel</Button>
           <Button type="submit" className="bg-primary hover:bg-primary/90 min-w-[150px]" disabled={isLoading}>
             {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-            Save Survey
+            {isEdit ? 'Update Survey' : 'Save Survey'}
           </Button>
         </div>
       </form>
     </div>
   );
 }
+

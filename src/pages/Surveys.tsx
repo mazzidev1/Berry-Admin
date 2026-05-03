@@ -4,8 +4,10 @@ import {
   flexRender, ColumnDef, SortingState, ColumnFiltersState
 } from '@tanstack/react-table';
 import { format } from 'date-fns';
-import { Search, Plus, MoreHorizontal, Copy, Edit, Trash, BarChart2 } from 'lucide-react';
+import { Search, Plus, MoreHorizontal, Copy, Edit, Trash, BarChart2, ListPlus } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useSurveyStore, Survey } from '@/stores/surveyStore';
+import { toast } from 'sonner';
 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -14,40 +16,47 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-
-const generateMockSurveys = (count: number) => {
-  const categories = ["Tech", "Health", "Finance", "Lifestyle", "General"];
-  const statuses = ["active", "draft", "closed"];
-  return Array.from({ length: count }).map((_, i) => ({
-    id: `srv-${i + 1}`,
-    title: `Customer Feedback Survey ${i + 1}`,
-    category: categories[Math.floor(Math.random() * categories.length)],
-    reward: Math.floor(Math.random() * 500) + 50,
-    completions: Math.floor(Math.random() * 5000),
-    targetLimit: Math.random() > 0.5 ? Math.floor(Math.random() * 5000) + 5000 : null,
-    status: statuses[Math.floor(Math.random() * statuses.length)],
-    createdAt: new Date(Date.now() - Math.random() * 10000000000),
-  }));
-};
-
-export type SurveyType = ReturnType<typeof generateMockSurveys>[0];
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function SurveysPage() {
-  const [data, setData] = useState<SurveyType[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { surveys: data, isLoading, fetchSurveys, deleteSurvey, addSurvey } = useSurveyStore();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
-    setIsLoading(true);
-    setTimeout(() => {
-      setData(generateMockSurveys(45));
-      setIsLoading(false);
-    }, 800);
-  }, []);
+    fetchSurveys();
+  }, [fetchSurveys]);
 
-  const columns: ColumnDef<SurveyType>[] = [
+  const handleDelete = () => {
+    if (deleteId) {
+      deleteSurvey(deleteId);
+      toast.success("Survey deleted successfully");
+      setDeleteId(null);
+    }
+  };
+
+  const handleDuplicate = (survey: Survey) => {
+    const { id, createdAt, completions, ...rest } = survey;
+    addSurvey({
+      ...rest,
+      title: `${survey.title} (Copy)`,
+      status: 'draft'
+    });
+    toast.success("Survey duplicated as draft");
+  };
+
+  const columns: ColumnDef<Survey>[] = [
     {
       accessorKey: 'title',
       header: 'Survey Title',
@@ -55,7 +64,9 @@ export default function SurveysPage() {
         const survey = row.original;
         return (
           <div className="flex flex-col">
-            <span className="font-medium text-sm truncate max-w-[250px]">{survey.title}</span>
+            <Link to={`/surveys/${survey.id}`} className="font-medium text-sm truncate max-w-[250px] hover:underline hover:text-primary transition-colors">
+              {survey.title}
+            </Link>
             <span className="text-xs text-muted-foreground truncate max-w-[250px]">ID: {survey.id}</span>
           </div>
         );
@@ -97,7 +108,7 @@ export default function SurveysPage() {
     {
       accessorKey: 'createdAt',
       header: 'Created On',
-      cell: ({ row }) => <div className="text-sm text-muted-foreground">{format(row.getValue('createdAt'), 'MMM d, yyyy')}</div>,
+      cell: ({ row }) => <div className="text-sm text-muted-foreground">{format(new Date(row.getValue('createdAt')), 'MMM d, yyyy')}</div>,
     },
     {
       id: 'actions',
@@ -110,17 +121,23 @@ export default function SurveysPage() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Actions</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => navigate(`/surveys/submissions?surveyId=${survey.id}`)}>
-                <BarChart2 className="w-4 h-4 mr-2" /> View Submissions
+              <DropdownMenuItem onClick={() => navigate(`/surveys/${survey.id}`)}>
+                <BarChart2 className="w-4 h-4 mr-2" /> View Details & Stats
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate(`/surveys/submissions?surveyId=${survey.id}`)}>
+                <ListPlus className="w-4 h-4 mr-2" /> View Submissions
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate(`/surveys/edit/${survey.id}`)}>
                 <Edit className="w-4 h-4 mr-2" /> Edit Survey
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleDuplicate(survey)}>
                 <Copy className="w-4 h-4 mr-2" /> Duplicate
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-destructive focus:text-destructive focus:bg-destructive/10">
+              <DropdownMenuItem 
+                className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                onClick={() => setDeleteId(survey.id)}
+              >
                 <Trash className="w-4 h-4 mr-2" /> Delete
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -236,6 +253,24 @@ export default function SurveysPage() {
           </div>
         </div>
       </div>
+
+      <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the survey and all associated submission data.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel variant="outline" size="default">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90" variant="destructive" size="default">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
+
